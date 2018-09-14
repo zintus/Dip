@@ -178,7 +178,7 @@ extension DependencyContainer {
     let (key, definition) = matching
     
     //first search for already resolved instance for this type or any of forwarding types
-    if let previouslyResolved: T = previouslyResolved(for: definition, key: key) {
+    if let previouslyResolved = previouslyResolved(for: definition, key: key) as T? {
       log(level: .Verbose, "Reusing previously resolved instance \(previouslyResolved)")
       return previouslyResolved
     }
@@ -227,7 +227,9 @@ extension DependencyContainer {
   
   private func previouslyResolved<T>(for definition: _Definition, key: DefinitionKey) -> T? {
     //first check if exact key was already resolved
-    if let previouslyResolved: T = resolvedInstances[key: key, inScope: definition.scope, context: context] {
+    if let resolveResult = resolvedInstances[key: key, inScope: definition.scope, context: context],
+       let previouslyResolved = resolveResult as? T
+        {
       return previouslyResolved
     }
     //then check if any related type was already resolved
@@ -235,7 +237,8 @@ extension DependencyContainer {
       DefinitionKey(type: $0, typeOfArguments: key.typeOfArguments, tag: key.tag)
     })
     for key in keys {
-      if let previouslyResolved: T = resolvedInstances[key: key, inScope: definition.scope, context: context] {
+        if let resolveResult = resolvedInstances[key: key, inScope: definition.scope, context: context],
+            let previouslyResolved = resolveResult as? T {
         return previouslyResolved
       }
     }
@@ -280,22 +283,20 @@ class ResolvedInstances {
   }
   var weakSingletons = [DefinitionKey: Any]()
   
-  subscript<T>(key key: DefinitionKey, inScope scope: ComponentScope, context context: DependencyContainer.Context) -> T? {
+  subscript(key key: DefinitionKey, inScope scope: ComponentScope, context context: DependencyContainer.Context) -> Any? {
     get {
-      let instance: Any?
       switch scope {
       case .singleton, .eagerSingleton:
-        instance = context.inCollaboration ? sharedSingletons[key] : singletons[key]
+        return context.inCollaboration ? sharedSingletons[key] : singletons[key]
       case .weakSingleton:
         let singletons = context.inCollaboration ? sharedWeakSingletons : weakSingletons
-        if let boxed = singletons[key] as? WeakBoxType { instance = boxed.unboxed }
-        else { instance = singletons[key] }
+        if let boxed = singletons[key] as? WeakBoxType { return boxed.unboxed }
+        else { return singletons[key] }
       case .shared:
-        instance = resolvedInstances[key]
+        return resolvedInstances[key]
       case .unique:
         return nil
       }
-      return instance.flatMap { $0 as? T }
     }
     set {
       switch scope {
